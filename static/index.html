@@ -200,6 +200,12 @@
         border: 1px solid var(--border);
       }
 
+      .secondary-button {
+        background: #fff;
+        color: var(--accent);
+        border: 1px solid rgba(46, 111, 87, 0.28);
+      }
+
       .status {
         color: var(--muted);
         font-size: 0.92rem;
@@ -307,6 +313,9 @@
             <div>
               <label for="chatModel">Chat model</label>
               <select id="chatModel"></select>
+              <button class="secondary-button" id="pullModelButton" type="button" style="display: none; margin-top: 8px;">
+                Pull model
+              </button>
               <p class="small" id="modelHelp" style="margin-top: 8px;"></p>
             </div>
           </div>
@@ -351,6 +360,7 @@
         availableModels: [],
         conversations: [],
         conversationId: "default",
+        ollamaAvailable: false,
       };
 
       const chatLog = document.getElementById("chatLog");
@@ -367,6 +377,7 @@
       const conversationTitle = document.getElementById("conversationTitle");
       const modelsText = document.getElementById("models");
       const chatModelInput = document.getElementById("chatModel");
+      const pullModelButton = document.getElementById("pullModelButton");
       const modelHelp = document.getElementById("modelHelp");
 
       function addBubble(role, content, blocked = false) {
@@ -380,7 +391,12 @@
       function setBusy(busy, text = "Ready") {
         sendButton.disabled = busy;
         newChatButton.disabled = busy;
+        pullModelButton.disabled = busy;
         statusText.textContent = text;
+      }
+
+      function selectedModel() {
+        return state.availableModels.find((item) => item.name === chatModelInput.value) || null;
       }
 
       function conversationStorageKey() {
@@ -485,18 +501,47 @@
       }
 
       function renderSelectedModelHelp() {
-        const selectedName = chatModelInput.value;
-        const model = state.availableModels.find((item) => item.name === selectedName);
+        const model = selectedModel();
         if (!model) {
           modelHelp.textContent = "";
+          pullModelButton.style.display = "none";
           return;
         }
 
         let text = describeModel(model);
         if (!model.installed) {
-          text += ` | To use now: ollama pull ${model.name}`;
+          text += ` | You can install it here now.`;
         }
         modelHelp.textContent = text;
+        pullModelButton.style.display =
+          !state.ollamaAvailable || model.installed ? "none" : "block";
+        pullModelButton.textContent = `Pull ${model.name}`;
+      }
+
+      function applyModelState(data, preferredSelection = "") {
+        state.ollamaAvailable = Boolean(data.ollama_available);
+        state.availableModels = data.chat_models || [];
+        const currentSelection = preferredSelection || chatModelInput.value;
+        chatModelInput.innerHTML = "";
+        state.availableModels.forEach((model) => {
+          const option = document.createElement("option");
+          option.value = model.name;
+          option.textContent = `${model.label} ${model.installed ? "(Installed)" : "(Pull first)"}`;
+          chatModelInput.appendChild(option);
+        });
+
+        if (
+          currentSelection &&
+          state.availableModels.some((model) => model.name === currentSelection)
+        ) {
+          chatModelInput.value = currentSelection;
+        } else {
+          const defaultModel = data.default_chat_model || data.chat_model;
+          if (defaultModel && state.availableModels.some((model) => model.name === defaultModel)) {
+            chatModelInput.value = defaultModel;
+          }
+        }
+        renderSelectedModelHelp();
       }
 
       function renderConversation(messages) {
@@ -551,20 +596,7 @@
           memberInput.appendChild(option);
         });
 
-        state.availableModels = data.chat_models || [];
-        chatModelInput.innerHTML = "";
-        state.availableModels.forEach((model) => {
-          const option = document.createElement("option");
-          option.value = model.name;
-          option.textContent = `${model.label} ${model.installed ? "(Installed)" : "(Pull first)"}`;
-          chatModelInput.appendChild(option);
-        });
-
-        const defaultModel = data.default_chat_model || data.chat_model;
-        if (defaultModel && state.availableModels.some((model) => model.name === defaultModel)) {
-          chatModelInput.value = defaultModel;
-        }
-        renderSelectedModelHelp();
+        applyModelState(data);
       }
 
       async function loadConversation() {
@@ -655,6 +687,39 @@
         }
       }
 
+      async function pullSelectedModel() {
+        const model = selectedModel();
+        if (!model || model.installed) {
+          return;
+        }
+
+        errorText.textContent = "";
+        setBusy(true, `Pulling ${model.name}... this may take a while`);
+
+        try {
+          const response = await fetch("/api/pull-model", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model_name: model.name,
+            }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Unable to pull the selected model.");
+          }
+
+          applyModelState(data, model.name);
+          setBusy(false, data.message || `Installed ${model.name}`);
+        } catch (error) {
+          errorText.textContent = error.message;
+          setBusy(false, "Ready");
+        }
+      }
+
       async function openConversation(conversationId) {
         persistConversationId(conversationId);
         await loadConversation();
@@ -675,6 +740,7 @@
       profileInput.addEventListener("change", loadConversation);
       pinInput.addEventListener("change", loadConversation);
       chatModelInput.addEventListener("change", renderSelectedModelHelp);
+      pullModelButton.addEventListener("click", pullSelectedModel);
       messageInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();

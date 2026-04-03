@@ -173,7 +173,7 @@ Notes:
 
 - installed models come from your local Ollama `/api/tags`
 - the full selector also includes a built-in catalog of common official Ollama Llama models
-- if you select a model that is not installed yet, the server will tell you which `ollama pull` command to run
+- if you select a model that is not installed yet, the UI now offers a `Pull model` button
 - the memory hint is approximate, not a guarantee
 
 The estimate is an engineering approximation based on current Ollama model sizes and common local-runtime overhead. Real needs vary by quantization, context length, and whether the machine uses discrete VRAM or shared unified memory.

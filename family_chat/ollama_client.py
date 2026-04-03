@@ -38,7 +38,7 @@ def _mock_chat(messages: Sequence[dict]) -> str:
     return f"MVP reply: {last_user_message[:280]}"
 
 
-def _post_json(path: str, payload: dict) -> dict:
+def _post_json(path: str, payload: dict, *, timeout: int = 120) -> dict:
     request = urllib.request.Request(
         f"{OLLAMA_URL}{path}",
         data=json.dumps(payload).encode("utf-8"),
@@ -46,7 +46,7 @@ def _post_json(path: str, payload: dict) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace")
@@ -174,6 +174,24 @@ def ensure_chat_model_available(model_name: str | None) -> str:
         return selected
 
     raise OllamaError(f"Model '{selected}' is not installed locally. Run `ollama pull {selected}` first.")
+
+
+def pull_chat_model(model_name: str) -> dict:
+    selected = (model_name or "").strip()
+    if not selected:
+        raise OllamaError("Model name is required.")
+
+    if not _is_llama_chat_model(selected):
+        raise OllamaError("Only Ollama Llama chat models can be pulled from this selector.")
+
+    if MOCK_OLLAMA:
+        raise OllamaError("Mock mode is enabled. Disable it before pulling models.")
+
+    data = _post_json("/api/pull", {"model": selected, "stream": False}, timeout=3600)
+    status = str(data.get("status", "")).strip().lower()
+    if status and status != "success":
+        raise OllamaError(f"Ollama pull did not complete successfully: {data.get('status')}")
+    return model_selector_state()
 
 
 def classify_messages(messages: Sequence[dict]) -> GuardVerdict:

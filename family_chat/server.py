@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from .config import MEMORY_DB_PATH, SERVER_HOST, SERVER_PORT, public_settings
 from .memory import LangGraphMemoryStore, MemoryConfigurationError
-from .ollama_client import OllamaError, model_selector_state
+from .ollama_client import OllamaError, model_selector_state, pull_chat_model
 from .service import ChatService
 
 
@@ -52,6 +52,9 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/conversations":
             self._handle_conversations()
+            return
+        if self.path == "/api/pull-model":
+            self._handle_pull_model()
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -178,6 +181,27 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"conversations": conversations})
+
+    def _handle_pull_model(self) -> None:
+        try:
+            payload = self._read_json_body()
+        except json.JSONDecodeError:
+            self._send_json({"error": "Invalid JSON body."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        model_name = str(payload.get("model_name", "")).strip()
+        if not model_name:
+            self._send_json({"error": "Model name is required."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            selector_state = pull_chat_model(model_name)
+        except OllamaError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
+            return
+
+        selector_state["message"] = f"Model '{model_name}' is ready to use."
+        self._send_json(selector_state)
 
 
 def main() -> None:
