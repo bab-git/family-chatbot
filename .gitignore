@@ -8,6 +8,7 @@ __pycache__/
 .uv-cache/
 .env
 .env.*
+.env_bk
 !.env.example
 .python-version
 .pytest_cache/
