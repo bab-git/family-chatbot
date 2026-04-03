@@ -1,6 +1,12 @@
 # Family Chat Experiment
 
-`experimental` `local-first` `ollama` `llama-guard` `family-chat` `ai-safety` `family-tech` `python`
+![Experimental](https://img.shields.io/badge/Status-Experimental-8a5cf6)
+![Local First](https://img.shields.io/badge/Runtime-Local%20First-2d6a4f)
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![Ollama](https://img.shields.io/badge/Model%20Runtime-Ollama-black)
+![Llama Guard](https://img.shields.io/badge/Safety-Llama%20Guard-c96c1a)
+![AI Safety](https://img.shields.io/badge/Focus-AI%20Safety-b22222)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 This is an experimental local-first setup exploring safer family-friendly chat patterns.
 
