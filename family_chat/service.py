@@ -148,8 +148,11 @@ class ChatService:
         if member_id not in VALID_MEMBER_IDS:
             raise ValueError("Unknown family member.")
 
-        if profile.requires_pin and ADMIN_PIN and pin != ADMIN_PIN:
-            raise PermissionError("Adult profile requires the correct PIN.")
+        if profile.requires_pin:
+            if not ADMIN_PIN:
+                raise PermissionError("Adult profile is disabled until FAMILY_CHAT_ADMIN_PIN is configured.")
+            if pin != ADMIN_PIN:
+                raise PermissionError("Adult profile requires the correct PIN.")
 
         return profile
 

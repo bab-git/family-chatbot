@@ -11,7 +11,12 @@ class ConfigTests(unittest.TestCase):
         importlib.reload(config_module)
 
     def _load_snapshot(self, env: dict[str, str]) -> dict[str, object]:
-        with patch.dict(os.environ, env, clear=True):
+        base_env = {
+            "FAMILY_CHAT_ADMIN_PIN": "",
+            "FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN": "",
+        }
+        base_env.update(env)
+        with patch.dict(os.environ, base_env, clear=True):
             module = importlib.reload(config_module)
             return {
                 "valid_members": module.VALID_MEMBER_IDS,
@@ -66,6 +71,29 @@ class ConfigTests(unittest.TestCase):
         )
 
         self.assertTrue(snapshot["settings"]["model_pull_requires_pin"])
+
+    def test_adult_profile_is_hidden_until_admin_pin_is_configured(self) -> None:
+        snapshot = self._load_snapshot(
+            {
+                "FAMILY_CHAT_MEMBERS": "son",
+                "FAMILY_CHAT_DEVICE_MEMBER": "son",
+            }
+        )
+
+        self.assertIn("child-12", snapshot["settings"]["profiles"])
+        self.assertNotIn("adult", snapshot["settings"]["profiles"])
+
+    def test_adult_profile_is_exposed_when_admin_pin_is_configured(self) -> None:
+        snapshot = self._load_snapshot(
+            {
+                "FAMILY_CHAT_MEMBERS": "son",
+                "FAMILY_CHAT_DEVICE_MEMBER": "son",
+                "FAMILY_CHAT_ADMIN_PIN": "4821",
+            }
+        )
+
+        self.assertIn("adult", snapshot["settings"]["profiles"])
+        self.assertTrue(snapshot["settings"]["profiles"]["adult"]["requires_pin"])
 
 
 if __name__ == "__main__":

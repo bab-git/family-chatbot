@@ -1,7 +1,7 @@
 [project]
 name = "family-chat-mvp"
 version = "0.1.0"
-description = "Local family chatbot MVP with Ollama and age-based safety profiles."
+description = "Experimental local-first family chat setup exploring safer chat patterns."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

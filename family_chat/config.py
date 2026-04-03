@@ -147,6 +147,18 @@ PROFILES: Dict[str, ProfileConfig] = {
 }
 
 
+def admin_pin_enabled() -> bool:
+    return bool(ADMIN_PIN)
+
+
+def available_profiles() -> Dict[str, ProfileConfig]:
+    return {
+        name: profile
+        for name, profile in PROFILES.items()
+        if not profile.requires_pin or admin_pin_enabled()
+    }
+
+
 def public_settings() -> dict:
     return {
         "chat_model": CHAT_MODEL,
@@ -154,13 +166,13 @@ def public_settings() -> dict:
         "guard_model": GUARD_MODEL,
         "memory_backend": "langgraph-sqlite-encrypted",
         "memory_encrypted": True,
-        "model_pull_requires_pin": MODEL_PULL_REQUIRES_PIN and bool(ADMIN_PIN),
+        "model_pull_requires_pin": MODEL_PULL_REQUIRES_PIN and admin_pin_enabled(),
         "profiles": {
             name: {
                 "name": profile.name,
-                "requires_pin": profile.requires_pin and bool(ADMIN_PIN),
+                "requires_pin": profile.requires_pin and admin_pin_enabled(),
             }
-            for name, profile in PROFILES.items()
+            for name, profile in available_profiles().items()
         },
         "device_member": {
             "id": DEVICE_MEMBER_ID,

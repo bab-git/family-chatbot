@@ -44,7 +44,7 @@ def get_chat_service() -> ChatService:
 
 
 class FamilyChatHandler(BaseHTTPRequestHandler):
-    server_version = "FamilyChatMVP/0.3"
+    server_version = "FamilyChatExperiment/0.4"
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path in {"/", "/index.html"}:
@@ -313,7 +313,7 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     server = ThreadingHTTPServer((SERVER_HOST, SERVER_PORT), FamilyChatHandler)
-    print(f"Family Chat MVP listening on http://{SERVER_HOST}:{SERVER_PORT}")
+    print(f"Family Chat Experiment listening on http://{SERVER_HOST}:{SERVER_PORT}")
     server.serve_forever()
 
 

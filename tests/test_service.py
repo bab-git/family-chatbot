@@ -135,6 +135,29 @@ class ChatServiceTests(unittest.TestCase):
                 ["Tell me a whale fact", "Safe answer"],
             )
 
+    def test_adult_profile_is_disabled_when_admin_pin_is_not_configured(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = LangGraphMemoryStore(Path(temp_dir) / "memory.sqlite3", "0123456789abcdef")
+            service = ChatService(
+                store,
+                classify=lambda messages: GuardVerdict(safe=True, categories=(), raw="safe"),
+                generate=lambda messages, model_name=None: "Safe answer",
+                resolve_model=lambda model_name=None: model_name or "llama3.2:1b",
+            )
+
+            with patch("family_chat.service.ADMIN_PIN", ""):
+                with self.assertRaises(PermissionError) as exc:
+                    service.chat(
+                        profile_name="adult",
+                        member_id="son",
+                        user_message="Tell me something practical",
+                    )
+
+            self.assertEqual(
+                str(exc.exception),
+                "Adult profile is disabled until FAMILY_CHAT_ADMIN_PIN is configured.",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
