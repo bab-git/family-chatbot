@@ -1,5 +1,7 @@
 # Family Chat Experiment
 
+`experimental` `local-first` `ollama` `llama-guard` `family-chat` `ai-safety` `family-tech` `python`
+
 This is an experimental local-first setup exploring safer family-friendly chat patterns.
 
 It combines a lightweight browser UI, local Ollama models, profile-based prompt and response filtering, and encrypted local conversation memory. This repo is not a certified child-safety product, not a guarantee, and not ready to market as a parental safety solution. It is a first step toward that goal, meant for local experiments, and open to contributions from people who want to test ideas, improve guardrails, or stress-test the current approach.
@@ -134,6 +136,7 @@ Privacy note:
 ## Contributing
 
 Ideas, issues, and pull requests are welcome. If you want to help, start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Recent project history is tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
