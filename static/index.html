@@ -120,7 +120,10 @@
         font-weight: 700;
       }
 
-      button:disabled {
+      button:disabled,
+      select:disabled,
+      input:disabled,
+      textarea:disabled {
         cursor: wait;
         opacity: 0.75;
       }
@@ -211,11 +214,6 @@
         font-size: 0.92rem;
       }
 
-      .warning {
-        color: var(--danger);
-        font-weight: 600;
-      }
-
       .conversation-list {
         display: flex;
         flex-direction: column;
@@ -283,14 +281,13 @@
           <h2 style="margin: 0;">Recent Chats</h2>
           <div class="conversation-list" id="conversationList"></div>
           <p class="small" id="conversationHelp">
-            Chats stay isolated by family member and profile.
+            Chats stay isolated by this device and profile.
           </p>
         </div>
 
         <div class="sidebar-section">
           <h2 style="margin: 0;">Profile</h2>
-          <label for="member">Family member</label>
-          <select id="member"></select>
+          <p class="small" id="deviceMemberText">This device: Loading...</p>
 
           <label for="profile" style="margin-top: 4px;">Choose a mode</label>
           <select id="profile">
@@ -324,7 +321,7 @@
         <div class="sidebar-section">
           <h2 style="margin: 0;">Notes</h2>
           <p class="small">
-            Memory is stored locally in an encrypted SQLite database, isolated per family member and profile.
+            Memory is stored locally in an encrypted SQLite database, isolated per device profile.
           </p>
         </div>
       </aside>
@@ -361,6 +358,9 @@
         conversations: [],
         conversationId: "default",
         ollamaAvailable: false,
+        deviceMember: null,
+        lastLoadedProfile: "child-12",
+        busy: false,
       };
 
       const chatLog = document.getElementById("chatLog");
@@ -369,7 +369,7 @@
       const messageInput = document.getElementById("message");
       const sendButton = document.getElementById("sendButton");
       const newChatButton = document.getElementById("newChatButton");
-      const memberInput = document.getElementById("member");
+      const deviceMemberText = document.getElementById("deviceMemberText");
       const profileInput = document.getElementById("profile");
       const pinInput = document.getElementById("pin");
       const conversationList = document.getElementById("conversationList");
@@ -388,11 +388,20 @@
         chatLog.scrollTop = chatLog.scrollHeight;
       }
 
+      function applyControlState() {
+        sendButton.disabled = state.busy;
+        newChatButton.disabled = state.busy;
+        profileInput.disabled = state.busy || !profileInput.options.length;
+        pinInput.disabled = state.busy;
+        chatModelInput.disabled = state.busy || !chatModelInput.options.length;
+        pullModelButton.disabled = state.busy;
+        messageInput.disabled = state.busy;
+      }
+
       function setBusy(busy, text = "Ready") {
-        sendButton.disabled = busy;
-        newChatButton.disabled = busy;
-        pullModelButton.disabled = busy;
+        state.busy = busy;
         statusText.textContent = text;
+        applyControlState();
       }
 
       function selectedModel() {
@@ -400,7 +409,8 @@
       }
 
       function conversationStorageKey() {
-        return `family-chat-conversation:${memberInput.value}:${profileInput.value}`;
+        const memberId = state.deviceMember ? state.deviceMember.id : "device";
+        return `family-chat-conversation:${memberId}:${profileInput.value}`;
       }
 
       function createConversationId() {
@@ -446,7 +456,7 @@
         }
 
         if (!conversations.length) {
-          conversationHelp.textContent = "No saved chats yet for this family member and mode.";
+          conversationHelp.textContent = "No saved chats yet for this device and mode.";
           renderConversationTitle();
           return;
         }
@@ -482,6 +492,29 @@
         renderConversationTitle();
       }
 
+      function renderProfileOptions(profileMap) {
+        const previous = profileInput.value;
+        const entries = Object.entries(profileMap || {});
+        profileInput.innerHTML = "";
+        entries.forEach(([name, details]) => {
+          const option = document.createElement("option");
+          option.value = name;
+          if (name === "child-12") {
+            option.textContent = "Child 12";
+          } else {
+            const label = details.name.replace("-", " ").replace("_", " ");
+            option.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+          }
+          profileInput.appendChild(option);
+        });
+
+        if (previous && entries.some(([name]) => name === previous)) {
+          profileInput.value = previous;
+        } else if (entries.length) {
+          profileInput.value = entries[0][0];
+        }
+      }
+
       function describeModel(model) {
         const status = model.installed ? "installed locally" : "not installed locally";
         const parts = [status, model.memory_note];
@@ -510,7 +543,7 @@
 
         let text = describeModel(model);
         if (!model.installed) {
-          text += ` | You can install it here now.`;
+          text += " | You can install it here now.";
         }
         modelHelp.textContent = text;
         pullModelButton.style.display =
@@ -564,7 +597,6 @@
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            member_id: memberInput.value,
             profile: profileInput.value,
             pin: pinInput.value,
           }),
@@ -582,25 +614,27 @@
       async function loadSettings() {
         const response = await fetch("/api/settings");
         const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to load settings.");
+        }
+
         modelsText.textContent =
           `Chat: ${data.chat_model} | Guard: ${data.guard_model} | Memory: ${data.memory_backend}`;
         if (!data.ollama_available && data.ollama_error) {
           modelsText.textContent += ` | Ollama: ${data.ollama_error}`;
         }
 
-        memberInput.innerHTML = "";
-        data.members.forEach((member) => {
-          const option = document.createElement("option");
-          option.value = member.id;
-          option.textContent = member.label;
-          memberInput.appendChild(option);
-        });
-
+        state.deviceMember = data.device_member || { id: "device", label: "This device" };
+        deviceMemberText.textContent = `This device: ${state.deviceMember.label}`;
+        renderProfileOptions(data.profiles || {});
         applyModelState(data);
+        syncConversationId();
       }
 
-      async function loadConversation() {
+      async function loadConversation({ preserveOnFailure = false } = {}) {
         errorText.textContent = "";
+        const previousProfile = state.lastLoadedProfile;
+        const previousConversationId = state.conversationId;
         syncConversationId();
         setBusy(true, "Loading memory...");
 
@@ -612,7 +646,6 @@
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              member_id: memberInput.value,
               profile: profileInput.value,
               pin: pinInput.value,
               conversation_id: state.conversationId,
@@ -626,11 +659,18 @@
 
           renderConversation(data.messages);
           renderConversationList();
+          state.lastLoadedProfile = profileInput.value;
           setBusy(false, data.messages.length ? `Loaded ${data.messages.length} messages` : "Ready");
         } catch (error) {
-          state.conversations = [];
-          renderConversationList();
-          renderConversation([]);
+          if (preserveOnFailure) {
+            profileInput.value = previousProfile;
+            state.conversationId = previousConversationId;
+            renderConversationList();
+          } else {
+            state.conversations = [];
+            renderConversationList();
+            renderConversation([]);
+          }
           errorText.textContent = error.message;
           setBusy(false, "Ready");
         }
@@ -655,7 +695,6 @@
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              member_id: memberInput.value,
               profile: profileInput.value,
               pin: pinInput.value,
               chat_model: chatModelInput.value,
@@ -682,6 +721,7 @@
           setBusy(false, "Saved to encrypted local memory");
         } catch (error) {
           errorText.textContent = error.message;
+          chatLog.lastChild?.remove();
           state.history.pop();
           setBusy(false, "Ready");
         }
@@ -736,8 +776,7 @@
 
       sendButton.addEventListener("click", sendMessage);
       newChatButton.addEventListener("click", startNewChat);
-      memberInput.addEventListener("change", loadConversation);
-      profileInput.addEventListener("change", loadConversation);
+      profileInput.addEventListener("change", () => loadConversation({ preserveOnFailure: true }));
       pinInput.addEventListener("change", loadConversation);
       chatModelInput.addEventListener("change", renderSelectedModelHelp);
       pullModelButton.addEventListener("click", pullSelectedModel);
@@ -748,8 +787,9 @@
         }
       });
 
-      loadSettings().then(loadConversation).catch(() => {
-        modelsText.textContent = "Unable to load settings.";
+      loadSettings().then(() => loadConversation()).catch((error) => {
+        modelsText.textContent = error.message || "Unable to load settings.";
+        renderConversation([]);
       });
     </script>
   </body>

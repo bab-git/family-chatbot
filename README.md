@@ -7,7 +7,7 @@ A small local chatbot MVP for a family setup with:
 - a moderation pass on both the user prompt and the assistant reply
 - a stricter `child-12` profile with age-appropriate prompting and extra keyword screening
 - encrypted LangGraph short-term memory stored in local SQLite
-- separate persisted threads for each family member and profile
+- separate persisted threads for each device profile and conversation
 - a chat model selector across Llama-family options with rough local memory guidance
 
 This MVP is designed to run on macOS first and then move cleanly to a Windows PC later.
@@ -23,7 +23,7 @@ Why this matters:
 - the child profile cannot bypass moderation from the UI alone
 - age-based policy lives outside the base model
 - blocked child prompts and blocked replies are never written into memory
-- each family member gets an isolated local memory thread
+- each install keeps its own isolated local memory
 - you can swap in a larger chat model later without changing the safety flow
 
 ## Default models
@@ -60,7 +60,9 @@ ollama pull llama3.2:1b
 ollama pull llama-guard3:1b
 ```
 
-## Configure the encryption key
+You can also pull additional Llama chat models from the app UI after the server starts.
+
+## Configure the local device and encryption key
 
 Copy the sample env file and set a local key:
 
@@ -68,20 +70,27 @@ Copy the sample env file and set a local key:
 cp .env.example .env
 ```
 
-Set `LANGGRAPH_AES_KEY` in `.env` to a 16, 24, or 32 byte secret.
-
-Example:
+Important values:
 
 ```bash
 LANGGRAPH_AES_KEY=0123456789abcdef0123456789abcdef
+FAMILY_CHAT_DEVICE_MEMBER=son
+FAMILY_CHAT_ADMIN_PIN=1234
 ```
 
-Important:
+Notes:
+
+- `LANGGRAPH_AES_KEY` must be exactly 16, 24, or 32 bytes long
+- `FAMILY_CHAT_DEVICE_MEMBER` fixes the identity for this install, so the browser cannot switch members
+- `FAMILY_CHAT_ADMIN_PIN` is optional; if blank, the `adult` profile is available without a PIN
+- the PIN is intentionally lightweight and not meant to be tamper-proof
+
+Privacy note:
 
 - this encrypts the SQLite memory contents
 - if someone copies only the database file, they should not be able to read the chat contents
 - if someone copies both the database file and your `.env` file, they can still decrypt it
-- for now this matches your requested MVP; later we can move the key into OS-level secure storage
+- for now this matches the local MVP tradeoff; later you can move the key into OS-level secure storage
 
 ## Run the server
 
@@ -112,6 +121,7 @@ export FAMILY_CHAT_GUARD_MODEL="llama-guard3:1b"
 export LANGGRAPH_AES_KEY="0123456789abcdef0123456789abcdef"
 export FAMILY_CHAT_DB_PATH="data/family_chat_memory.sqlite3"
 export FAMILY_CHAT_MEMBERS="son,parent-a,parent-b"
+export FAMILY_CHAT_DEVICE_MEMBER="son"
 export FAMILY_CHAT_HOST="127.0.0.1"
 export FAMILY_CHAT_PORT="8080"
 export FAMILY_CHAT_ADMIN_PIN="1234"
@@ -119,10 +129,9 @@ export FAMILY_CHAT_ADMIN_PIN="1234"
 
 Notes:
 
-- If `FAMILY_CHAT_ADMIN_PIN` is set, the `adult` profile requires that PIN from the UI.
-- If the PIN is blank, the adult profile is available without unlock.
-- `FAMILY_CHAT_MEMBERS` controls the family member identities shown in the UI.
-- Each member/profile combination gets its own LangGraph thread.
+- `FAMILY_CHAT_DEVICE_MEMBER` must be one of the configured `FAMILY_CHAT_MEMBERS`
+- if `FAMILY_CHAT_DEVICE_MEMBER` is omitted, the app uses the first valid entry from `FAMILY_CHAT_MEMBERS`
+- if `FAMILY_CHAT_MEMBERS` cannot be parsed, the app falls back to `son`
 
 ## Mock mode
 
@@ -147,16 +156,16 @@ This MVP now uses:
 - LangGraph short-term memory
 - SQLite checkpoints on local disk
 - AES encryption via `LANGGRAPH_AES_KEY`
-- separate threads for each family member and profile
+- separate threads for the configured device member, profile, and conversation
 
 Current safety rules around memory:
 
 - blocked child prompts are not saved
 - blocked assistant replies are not saved
 - only safe completed turns are persisted
-- the UI can reload previous saved history for the selected family member
-- `New Chat` starts a fresh conversation thread for the current family member and profile
-- the sidebar shows recent saved chats for the selected family member and profile
+- the UI can reload previous saved history for the current profile
+- `New Chat` starts a fresh conversation thread for the current profile
+- the sidebar shows recent saved chats for the current profile
 - clicking a saved chat resumes that exact LangGraph thread
 - the pre-existing ongoing conversation remains the `default` thread unless you switch to a new one
 
@@ -173,7 +182,7 @@ Notes:
 
 - installed models come from your local Ollama `/api/tags`
 - the full selector also includes a built-in catalog of common official Ollama Llama models
-- if you select a model that is not installed yet, the UI now offers a `Pull model` button
+- if you select a model that is not installed yet, the UI offers a `Pull model` button
 - the memory hint is approximate, not a guarantee
 
 The estimate is an engineering approximation based on current Ollama model sizes and common local-runtime overhead. Real needs vary by quantization, context length, and whether the machine uses discrete VRAM or shared unified memory.
@@ -189,7 +198,7 @@ The `child-12` profile applies:
 
 If content is blocked, the child sees a short refusal and a suggestion to ask a parent or trusted adult.
 
-Important: this is a practical MVP, not a perfect child-safety guarantee. For a real family deployment, keep the raw Ollama port off the child-facing network path and avoid exposing unrestricted model switching.
+Important: this is a practical MVP, not a perfect child-safety guarantee. For a younger child on their own machine, a separate child-focused install is still safer than relying only on a PIN to hide adult mode.
 
 ## Run tests
 
@@ -206,17 +215,11 @@ When you move this to your son's Windows PC:
 3. Install `uv`.
 4. Create the venv with `uv venv .venv`.
 5. Create a local `.env` based on `.env.example` and set `LANGGRAPH_AES_KEY`.
-6. Run `.\.venv\Scripts\python -m family_chat.server`.
-7. If you want the PC to serve other devices on your home network, set:
+6. Set `FAMILY_CHAT_DEVICE_MEMBER` for that device.
+7. Run `.\.venv\Scripts\python -m family_chat.server`.
+8. If you want the PC to serve other devices on your home network, set:
 
 ```bash
 set FAMILY_CHAT_HOST=0.0.0.0
 .\.venv\Scripts\python -m family_chat.server
 ```
-
-For the final deployment, I recommend:
-
-- keeping the child account in `child-12` only
-- setting an adult PIN
-- deciding on a larger chat model only after checking RAM and GPU on that Windows machine
-- moving the encryption key out of `.env` and into OS-managed secure storage later

@@ -7,6 +7,8 @@ __pycache__/
 .venv/
 .uv-cache/
 .env
+.env.*
+!.env.example
 .python-version
 .pytest_cache/
 .mypy_cache/

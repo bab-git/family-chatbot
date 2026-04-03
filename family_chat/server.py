@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict
 
-from .config import MEMORY_DB_PATH, SERVER_HOST, SERVER_PORT, public_settings
+from .config import DEVICE_MEMBER_ID, MEMORY_DB_PATH, SERVER_HOST, SERVER_PORT, public_settings
 from .memory import LangGraphMemoryStore, MemoryConfigurationError
 from .ollama_client import OllamaError, model_selector_state, pull_chat_model
 from .service import ChatService
@@ -30,16 +30,14 @@ def get_chat_service() -> ChatService:
 
 
 class FamilyChatHandler(BaseHTTPRequestHandler):
-    server_version = "FamilyChatMVP/0.2"
+    server_version = "FamilyChatMVP/0.3"
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path in {"/", "/index.html"}:
             self._serve_index()
             return
         if self.path == "/api/settings":
-            payload = public_settings()
-            payload.update(model_selector_state())
-            self._send_json(payload)
+            self._handle_settings()
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -72,7 +70,7 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
     def _read_json_body(self) -> Dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
-        return json.loads(raw.decode("utf-8"))
+        return json.loads(raw.decode("utf-8")) if raw else {}
 
     def _send_json(self, payload: Dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -81,6 +79,11 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _handle_settings(self) -> None:
+        payload = public_settings()
+        payload.update(model_selector_state())
+        self._send_json(payload)
 
     def _handle_chat(self) -> None:
         try:
@@ -94,14 +97,16 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Message is required."}, status=HTTPStatus.BAD_REQUEST)
             return
 
+        conversation_id = str(payload.get("conversation_id", "")).strip() or "default"
+
         try:
             result = get_chat_service().chat(
                 profile_name=str(payload.get("profile", "child-12")),
-                member_id=str(payload.get("member_id", "son")),
+                member_id=DEVICE_MEMBER_ID,
                 pin=str(payload.get("pin", "")),
                 user_message=user_message,
                 chat_model=str(payload.get("chat_model", "")).strip() or None,
-                conversation_id=str(payload.get("conversation_id", "")).strip() or None,
+                conversation_id=conversation_id,
             )
         except ValueError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
@@ -122,7 +127,7 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
                 "reason": result.reason,
                 "categories": list(result.categories),
                 "reply": result.reply,
-                "conversation_id": str(payload.get("conversation_id", "")).strip() or "default",
+                "conversation_id": conversation_id,
             }
         )
 
@@ -133,12 +138,14 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Invalid JSON body."}, status=HTTPStatus.BAD_REQUEST)
             return
 
+        conversation_id = str(payload.get("conversation_id", "")).strip() or "default"
+
         try:
             messages = get_chat_service().list_history(
                 profile_name=str(payload.get("profile", "child-12")),
-                member_id=str(payload.get("member_id", "son")),
+                member_id=DEVICE_MEMBER_ID,
                 pin=str(payload.get("pin", "")),
-                conversation_id=str(payload.get("conversation_id", "")).strip() or None,
+                conversation_id=conversation_id,
             )
         except ValueError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
@@ -150,12 +157,7 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=HTTPStatus.SERVICE_UNAVAILABLE)
             return
 
-        self._send_json(
-            {
-                "messages": messages,
-                "conversation_id": str(payload.get("conversation_id", "")).strip() or "default",
-            }
-        )
+        self._send_json({"messages": messages, "conversation_id": conversation_id})
 
     def _handle_conversations(self) -> None:
         try:
@@ -167,7 +169,7 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
         try:
             conversations = get_chat_service().list_conversations(
                 profile_name=str(payload.get("profile", "child-12")),
-                member_id=str(payload.get("member_id", "son")),
+                member_id=DEVICE_MEMBER_ID,
                 pin=str(payload.get("pin", "")),
             )
         except ValueError as exc:

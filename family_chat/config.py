@@ -36,6 +36,7 @@ MEMORY_CONTEXT_LIMIT = int(os.getenv("FAMILY_CHAT_MEMORY_CONTEXT_LIMIT", "16"))
 HISTORY_LOAD_LIMIT = int(os.getenv("FAMILY_CHAT_HISTORY_LOAD_LIMIT", "40"))
 CONVERSATION_LIST_LIMIT = int(os.getenv("FAMILY_CHAT_CONVERSATION_LIST_LIMIT", "20"))
 RAW_MEMBER_IDS = os.getenv("FAMILY_CHAT_MEMBERS", "son,parent-a,parent-b")
+RAW_DEVICE_MEMBER_ID = os.getenv("FAMILY_CHAT_DEVICE_MEMBER", "")
 
 
 def _parse_member_ids(raw_value: str) -> Tuple[str, ...]:
@@ -59,6 +60,20 @@ VALID_MEMBER_IDS = _parse_member_ids(RAW_MEMBER_IDS)
 
 def member_label(member_id: str) -> str:
     return member_id.replace("-", " ").replace("_", " ").title()
+
+
+def _select_device_member(raw_value: str, valid_members: Tuple[str, ...]) -> str:
+    normalized = raw_value.strip().lower()
+    if not normalized:
+        return valid_members[0] if valid_members else "son"
+    if normalized not in valid_members:
+        raise RuntimeError(
+            "FAMILY_CHAT_DEVICE_MEMBER must match one of the configured FAMILY_CHAT_MEMBERS values."
+        )
+    return normalized
+
+
+DEVICE_MEMBER_ID = _select_device_member(RAW_DEVICE_MEMBER_ID, VALID_MEMBER_IDS)
 
 ALL_GUARD_CATEGORIES = frozenset(
     {
@@ -141,5 +156,8 @@ def public_settings() -> dict:
             }
             for name, profile in PROFILES.items()
         },
-        "members": [{"id": member_id, "label": member_label(member_id)} for member_id in VALID_MEMBER_IDS],
+        "device_member": {
+            "id": DEVICE_MEMBER_ID,
+            "label": member_label(DEVICE_MEMBER_ID),
+        },
     }

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from family_chat.memory import LangGraphMemoryStore
 from family_chat.policy import GuardVerdict
@@ -97,6 +98,42 @@ class ChatServiceTests(unittest.TestCase):
             conversations = service.list_conversations(profile_name="child-12", member_id="son")
 
             self.assertEqual([item["conversation_id"] for item in conversations], ["kept-chat"])
+
+    def test_wrong_pin_blocks_adult_without_affecting_child_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = LangGraphMemoryStore(Path(temp_dir) / "memory.sqlite3", "0123456789abcdef")
+            service = ChatService(
+                store,
+                classify=lambda messages: GuardVerdict(safe=True, categories=(), raw="safe"),
+                generate=lambda messages, model_name=None: "Safe answer",
+                resolve_model=lambda model_name=None: model_name or "llama3.2:1b",
+            )
+
+            with patch("family_chat.service.ADMIN_PIN", "2468"):
+                service.chat(
+                    profile_name="child-12",
+                    member_id="son",
+                    user_message="Tell me a whale fact",
+                    conversation_id="child-chat",
+                )
+
+                with self.assertRaises(PermissionError):
+                    service.list_history(
+                        profile_name="adult",
+                        member_id="son",
+                        pin="9999",
+                    )
+
+                child_history = service.list_history(
+                    profile_name="child-12",
+                    member_id="son",
+                    conversation_id="child-chat",
+                )
+
+            self.assertEqual(
+                [item["content"] for item in child_history],
+                ["Tell me a whale fact", "Safe answer"],
+            )
 
 
 if __name__ == "__main__":
