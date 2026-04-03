@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 from .config import DEVICE_MEMBER_ID, MEMORY_DB_PATH, SERVER_HOST, SERVER_PORT, public_settings
 from .memory import LangGraphMemoryStore, MemoryConfigurationError
-from .ollama_client import OllamaError, model_selector_state, pull_chat_model
+from .ollama_client import OllamaError, model_selector_state, pull_chat_model, stream_pull_chat_model
 from .service import ChatService
 
 
@@ -54,6 +54,9 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
         if self.path == "/api/pull-model":
             self._handle_pull_model()
             return
+        if self.path == "/api/pull-model-progress":
+            self._handle_pull_model_progress()
+            return
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -79,6 +82,17 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _begin_json_stream(self) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+    def _write_json_stream_event(self, payload: Dict[str, Any]) -> None:
+        line = json.dumps(payload).encode("utf-8") + b"\n"
+        self.wfile.write(line)
+        self.wfile.flush()
 
     def _handle_settings(self) -> None:
         payload = public_settings()
@@ -204,6 +218,46 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
 
         selector_state["message"] = f"Model '{model_name}' is ready to use."
         self._send_json(selector_state)
+
+    def _handle_pull_model_progress(self) -> None:
+        try:
+            payload = self._read_json_body()
+        except json.JSONDecodeError:
+            self._send_json({"error": "Invalid JSON body."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        model_name = str(payload.get("model_name", "")).strip()
+        if not model_name:
+            self._send_json({"error": "Model name is required."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            events = stream_pull_chat_model(model_name)
+        except OllamaError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            self._begin_json_stream()
+            for event in events:
+                self._write_json_stream_event(event)
+
+            self._write_json_stream_event(
+                {
+                    "type": "complete",
+                    "done": True,
+                    "model_name": model_name,
+                    "message": f"Model '{model_name}' is ready to use.",
+                    "selector_state": model_selector_state(),
+                }
+            )
+        except OllamaError as exc:
+            try:
+                self._write_json_stream_event({"type": "error", "done": True, "error": str(exc)})
+            except OSError:
+                return
+        except OSError:
+            return
 
 
 def main() -> None:

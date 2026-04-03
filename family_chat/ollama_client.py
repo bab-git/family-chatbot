@@ -4,7 +4,7 @@ import json
 import warnings
 import urllib.error
 import urllib.request
-from typing import List, Sequence
+from typing import Iterator, List, Sequence
 
 from .config import CHAT_MODEL, GUARD_MODEL, MOCK_OLLAMA, OLLAMA_URL
 from .model_catalog import estimate_memory_note, merge_model_entries
@@ -60,6 +60,32 @@ def _post_json(path: str, payload: dict, *, timeout: int = 120) -> dict:
         return json.loads(body)
     except json.JSONDecodeError as exc:
         raise OllamaError("Ollama returned invalid JSON.") from exc
+
+
+def _iter_post_json_lines(path: str, payload: dict, *, timeout: int = 120) -> Iterator[dict]:
+    request = urllib.request.Request(
+        f"{OLLAMA_URL}{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            for raw_line in response:
+                line = raw_line.decode("utf-8").strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise OllamaError("Ollama returned invalid streaming JSON.") from exc
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise OllamaError(f"Ollama HTTP {exc.code}: {error_body}") from exc
+    except urllib.error.URLError as exc:
+        raise OllamaError(
+            f"Unable to reach Ollama at {OLLAMA_URL}. Start Ollama and pull the configured models."
+        ) from exc
 
 
 def _get_json(path: str) -> dict:
@@ -174,6 +200,55 @@ def ensure_chat_model_available(model_name: str | None) -> str:
         return selected
 
     raise OllamaError(f"Model '{selected}' is not installed locally. Run `ollama pull {selected}` first.")
+
+
+def _progress_value(value: object) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
+
+
+def stream_pull_chat_model(model_name: str) -> Iterator[dict]:
+    selected = (model_name or "").strip()
+    if not selected:
+        raise OllamaError("Model name is required.")
+
+    if not _is_llama_chat_model(selected):
+        raise OllamaError("Only Ollama Llama chat models can be pulled from this selector.")
+
+    if MOCK_OLLAMA:
+        raise OllamaError("Mock mode is enabled. Disable it before pulling models.")
+
+    def _events() -> Iterator[dict]:
+        saw_event = False
+        for event in _iter_post_json_lines("/api/pull", {"model": selected}, timeout=3600):
+            saw_event = True
+            if not isinstance(event, dict):
+                continue
+
+            error_message = str(event.get("error", "")).strip()
+            if error_message:
+                raise OllamaError(error_message)
+
+            yield {
+                "type": "progress",
+                "model_name": selected,
+                "status": str(event.get("status", "")).strip() or "Pulling model...",
+                "digest": str(event.get("digest", "")).strip(),
+                "completed": _progress_value(event.get("completed")),
+                "total": _progress_value(event.get("total")),
+            }
+
+        if not saw_event:
+            raise OllamaError("Ollama did not return any pull progress updates.")
+
+    return _events()
 
 
 def pull_chat_model(model_name: str) -> dict:

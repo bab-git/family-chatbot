@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from family_chat.ollama_client import OllamaError, pull_chat_model
+from family_chat.ollama_client import OllamaError, pull_chat_model, stream_pull_chat_model
 
 
 class OllamaClientTests(unittest.TestCase):
@@ -30,6 +30,38 @@ class OllamaClientTests(unittest.TestCase):
     def test_pull_chat_model_rejects_non_llama_models(self) -> None:
         with self.assertRaises(OllamaError):
             pull_chat_model("llama-guard3:1b")
+
+    @patch("family_chat.ollama_client._iter_post_json_lines")
+    def test_stream_pull_chat_model_yields_normalized_progress_events(self, mock_stream) -> None:
+        mock_stream.return_value = iter(
+            [
+                {"status": "pulling manifest"},
+                {
+                    "status": "downloading",
+                    "digest": "sha256:abc123",
+                    "completed": 50,
+                    "total": 100,
+                },
+                {"status": "success"},
+            ]
+        )
+
+        events = list(stream_pull_chat_model("llama3.2:3b"))
+
+        self.assertEqual(events[0]["type"], "progress")
+        self.assertEqual(events[0]["status"], "pulling manifest")
+        self.assertIsNone(events[0]["completed"])
+        self.assertEqual(events[1]["digest"], "sha256:abc123")
+        self.assertEqual(events[1]["completed"], 50)
+        self.assertEqual(events[1]["total"], 100)
+        mock_stream.assert_called_once_with("/api/pull", {"model": "llama3.2:3b"}, timeout=3600)
+
+    @patch("family_chat.ollama_client._iter_post_json_lines")
+    def test_stream_pull_chat_model_raises_on_stream_error(self, mock_stream) -> None:
+        mock_stream.return_value = iter([{"error": "download failed"}])
+
+        with self.assertRaises(OllamaError):
+            list(stream_pull_chat_model("llama3.2:3b"))
 
 
 if __name__ == "__main__":

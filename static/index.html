@@ -214,6 +214,11 @@
         font-size: 0.92rem;
       }
 
+      .warning {
+        color: var(--danger);
+        font-weight: 600;
+      }
+
       .conversation-list {
         display: flex;
         flex-direction: column;
@@ -313,6 +318,7 @@
               <button class="secondary-button" id="pullModelButton" type="button" style="display: none; margin-top: 8px;">
                 Pull model
               </button>
+              <p class="small" id="pullProgressText" style="display: none; margin-top: 8px;"></p>
               <p class="small" id="modelHelp" style="margin-top: 8px;"></p>
             </div>
           </div>
@@ -378,6 +384,7 @@
       const modelsText = document.getElementById("models");
       const chatModelInput = document.getElementById("chatModel");
       const pullModelButton = document.getElementById("pullModelButton");
+      const pullProgressText = document.getElementById("pullProgressText");
       const modelHelp = document.getElementById("modelHelp");
 
       function addBubble(role, content, blocked = false) {
@@ -406,6 +413,12 @@
 
       function selectedModel() {
         return state.availableModels.find((item) => item.name === chatModelInput.value) || null;
+      }
+
+      function setPullProgress(message = "", tone = "info") {
+        pullProgressText.textContent = message;
+        pullProgressText.style.display = message ? "block" : "none";
+        pullProgressText.classList.toggle("warning", tone === "error");
       }
 
       function conversationStorageKey() {
@@ -533,11 +546,114 @@
         return parts.join(" | ");
       }
 
+      function formatBytes(bytes) {
+        if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
+          return "";
+        }
+
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let value = bytes;
+        let unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.length - 1) {
+          value /= 1024;
+          unitIndex += 1;
+        }
+        const decimals = value >= 100 || unitIndex === 0 ? 0 : 1;
+        return `${value.toFixed(decimals)} ${units[unitIndex]}`;
+      }
+
+      function formatPullProgress(event) {
+        const status = event.status || "Pulling model...";
+        const completed = Number.isFinite(event.completed) ? event.completed : null;
+        const total = Number.isFinite(event.total) && event.total > 0 ? event.total : null;
+        if (!total || completed === null) {
+          return status;
+        }
+
+        const percent = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+        const completedLabel = formatBytes(completed);
+        const totalLabel = formatBytes(total);
+        return `${status} (${percent}%${completedLabel && totalLabel ? `, ${completedLabel} / ${totalLabel}` : ""})`;
+      }
+
+      async function readPullProgress(response, modelName) {
+        if (!response.body || typeof response.body.getReader !== "function") {
+          const fallbackData = await response.json();
+          if (!response.ok) {
+            throw new Error(fallbackData.error || "Unable to pull the selected model.");
+          }
+          return fallbackData;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let finalEvent = null;
+
+        function handleEvent(event) {
+          if (event.type === "progress") {
+            setBusy(true, "Pulling model...");
+            setPullProgress(formatPullProgress(event));
+            return;
+          }
+
+          if (event.type === "error") {
+            throw new Error(event.error || `Unable to pull ${modelName}.`);
+          }
+
+          if (event.type === "complete") {
+            finalEvent = event;
+            return;
+          }
+
+          if (event.error) {
+            throw new Error(event.error);
+          }
+        }
+
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) {
+              continue;
+            }
+
+            const event = JSON.parse(line);
+            handleEvent(event);
+          }
+
+          if (done) {
+            break;
+          }
+        }
+
+        const tail = buffer.trim();
+        if (tail) {
+          handleEvent(JSON.parse(tail));
+        }
+
+        if (!response.ok && !finalEvent) {
+          throw new Error(`Unable to pull ${modelName}.`);
+        }
+
+        if (!finalEvent || !finalEvent.selector_state) {
+          throw new Error(`Pull finished without a final status for ${modelName}.`);
+        }
+
+        return finalEvent;
+      }
+
       function renderSelectedModelHelp() {
         const model = selectedModel();
         if (!model) {
           modelHelp.textContent = "";
           pullModelButton.style.display = "none";
+          setPullProgress("");
           return;
         }
 
@@ -734,10 +850,11 @@
         }
 
         errorText.textContent = "";
-        setBusy(true, `Pulling ${model.name}... this may take a while`);
+        setPullProgress(`Pulling ${model.name}... this may take a while`);
+        setBusy(true, "Pulling model...");
 
         try {
-          const response = await fetch("/api/pull-model", {
+          const response = await fetch("/api/pull-model-progress", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -747,15 +864,13 @@
             }),
           });
 
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.error || "Unable to pull the selected model.");
-          }
-
-          applyModelState(data, model.name);
+          const data = await readPullProgress(response, model.name);
+          applyModelState(data.selector_state, model.name);
+          setPullProgress(data.message || `Installed ${model.name}`);
           setBusy(false, data.message || `Installed ${model.name}`);
         } catch (error) {
           errorText.textContent = error.message;
+          setPullProgress(error.message, "error");
           setBusy(false, "Ready");
         }
       }
@@ -778,7 +893,10 @@
       newChatButton.addEventListener("click", startNewChat);
       profileInput.addEventListener("change", () => loadConversation({ preserveOnFailure: true }));
       pinInput.addEventListener("change", loadConversation);
-      chatModelInput.addEventListener("change", renderSelectedModelHelp);
+      chatModelInput.addEventListener("change", () => {
+        setPullProgress("");
+        renderSelectedModelHelp();
+      });
       pullModelButton.addEventListener("click", pullSelectedModel);
       messageInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !event.shiftKey) {
