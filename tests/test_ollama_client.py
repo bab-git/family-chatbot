@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from family_chat.ollama_client import OllamaError, pull_chat_model, stream_pull_chat_model
+from family_chat.ollama_client import OllamaError, delete_chat_model, pull_chat_model, stream_pull_chat_model
 
 
 class OllamaClientTests(unittest.TestCase):
@@ -62,6 +62,32 @@ class OllamaClientTests(unittest.TestCase):
 
         with self.assertRaises(OllamaError):
             list(stream_pull_chat_model("llama3.2:3b"))
+
+    @patch("family_chat.ollama_client.model_selector_state")
+    @patch("family_chat.ollama_client._delete_json")
+    def test_delete_chat_model_calls_ollama_and_returns_refreshed_selector_state(
+        self, mock_delete_json, mock_model_selector_state
+    ) -> None:
+        mock_delete_json.return_value = {}
+        mock_model_selector_state.return_value = {
+            "default_chat_model": "llama3.2:1b",
+            "ollama_available": True,
+            "ollama_error": "",
+            "chat_models": [{"name": "llama3.2:3b", "installed": False}],
+        }
+
+        result = delete_chat_model("llama3.2:3b")
+
+        self.assertFalse(result["chat_models"][0]["installed"])
+        mock_delete_json.assert_called_once_with(
+            "/api/delete",
+            {"model": "llama3.2:3b"},
+            timeout=120,
+        )
+
+    def test_delete_chat_model_rejects_non_llama_models(self) -> None:
+        with self.assertRaises(OllamaError):
+            delete_chat_model("llama-guard3:1b")
 
 
 if __name__ == "__main__":

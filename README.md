@@ -76,6 +76,7 @@ Important values:
 LANGGRAPH_AES_KEY=0123456789abcdef0123456789abcdef
 FAMILY_CHAT_DEVICE_MEMBER=son
 FAMILY_CHAT_ADMIN_PIN=1234
+FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN=1
 ```
 
 Notes:
@@ -83,6 +84,7 @@ Notes:
 - `LANGGRAPH_AES_KEY` must be exactly 16, 24, or 32 bytes long
 - `FAMILY_CHAT_DEVICE_MEMBER` fixes the identity for this install, so the browser cannot switch members
 - `FAMILY_CHAT_ADMIN_PIN` is optional; if blank, the `adult` profile is available without a PIN
+- `FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN=1` makes model pulls use that same adult PIN
 - the PIN is intentionally lightweight and not meant to be tamper-proof
 
 Privacy note:
@@ -125,6 +127,7 @@ export FAMILY_CHAT_DEVICE_MEMBER="son"
 export FAMILY_CHAT_HOST="127.0.0.1"
 export FAMILY_CHAT_PORT="8080"
 export FAMILY_CHAT_ADMIN_PIN="1234"
+export FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN="1"
 ```
 
 Notes:
@@ -132,6 +135,7 @@ Notes:
 - `FAMILY_CHAT_DEVICE_MEMBER` must be one of the configured `FAMILY_CHAT_MEMBERS`
 - if `FAMILY_CHAT_DEVICE_MEMBER` is omitted, the app uses the first valid entry from `FAMILY_CHAT_MEMBERS`
 - if `FAMILY_CHAT_MEMBERS` cannot be parsed, the app falls back to `son`
+- if `FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN=1` and `FAMILY_CHAT_ADMIN_PIN` is set, pulling models requires that same PIN
 
 ## Mock mode
 
@@ -183,6 +187,7 @@ Notes:
 - installed models come from your local Ollama `/api/tags`
 - the full selector also includes a built-in catalog of common official Ollama Llama models
 - if you select a model that is not installed yet, the UI offers a `Pull model` button with live pull progress
+- if you select a model that is already installed, the UI offers a `Delete model` button to remove it locally
 - the memory hint is approximate, not a guarantee
 
 The estimate is an engineering approximation based on current Ollama model sizes and common local-runtime overhead. Real needs vary by quantization, context length, and whether the machine uses discrete VRAM or shared unified memory.

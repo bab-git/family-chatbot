@@ -55,6 +55,18 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 importlib.reload(config_module)
 
+    def test_model_pull_requires_pin_only_when_flag_and_admin_pin_are_set(self) -> None:
+        snapshot = self._load_snapshot(
+            {
+                "FAMILY_CHAT_MEMBERS": "son",
+                "FAMILY_CHAT_DEVICE_MEMBER": "son",
+                "FAMILY_CHAT_ADMIN_PIN": "4821",
+                "FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN": "1",
+            }
+        )
+
+        self.assertTrue(snapshot["settings"]["model_pull_requires_pin"])
+
 
 if __name__ == "__main__":
     unittest.main()

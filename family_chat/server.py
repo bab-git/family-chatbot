@@ -7,9 +7,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict
 
-from .config import DEVICE_MEMBER_ID, MEMORY_DB_PATH, SERVER_HOST, SERVER_PORT, public_settings
+from .config import (
+    ADMIN_PIN,
+    DEVICE_MEMBER_ID,
+    MEMORY_DB_PATH,
+    MODEL_PULL_REQUIRES_PIN,
+    SERVER_HOST,
+    SERVER_PORT,
+    public_settings,
+)
 from .memory import LangGraphMemoryStore, MemoryConfigurationError
-from .ollama_client import OllamaError, model_selector_state, pull_chat_model, stream_pull_chat_model
+from .ollama_client import (
+    OllamaError,
+    delete_chat_model,
+    model_selector_state,
+    pull_chat_model,
+    stream_pull_chat_model,
+)
 from .service import ChatService
 
 
@@ -53,6 +67,9 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/pull-model":
             self._handle_pull_model()
+            return
+        if self.path == "/api/delete-model":
+            self._handle_delete_model()
             return
         if self.path == "/api/pull-model-progress":
             self._handle_pull_model_progress()
@@ -98,6 +115,11 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
         payload = public_settings()
         payload.update(model_selector_state())
         self._send_json(payload)
+
+    @staticmethod
+    def _require_model_pull_pin(pin: str) -> None:
+        if MODEL_PULL_REQUIRES_PIN and ADMIN_PIN and pin != ADMIN_PIN:
+            raise PermissionError("Pulling models requires the correct adult PIN.")
 
     def _handle_chat(self) -> None:
         try:
@@ -211,12 +233,37 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             return
 
         try:
+            self._require_model_pull_pin(str(payload.get("pin", "")))
             selector_state = pull_chat_model(model_name)
+        except PermissionError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.FORBIDDEN)
+            return
         except OllamaError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
             return
 
         selector_state["message"] = f"Model '{model_name}' is ready to use."
+        self._send_json(selector_state)
+
+    def _handle_delete_model(self) -> None:
+        try:
+            payload = self._read_json_body()
+        except json.JSONDecodeError:
+            self._send_json({"error": "Invalid JSON body."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        model_name = str(payload.get("model_name", "")).strip()
+        if not model_name:
+            self._send_json({"error": "Model name is required."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            selector_state = delete_chat_model(model_name)
+        except OllamaError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
+            return
+
+        selector_state["message"] = f"Model '{model_name}' was deleted."
         self._send_json(selector_state)
 
     def _handle_pull_model_progress(self) -> None:
@@ -232,7 +279,11 @@ class FamilyChatHandler(BaseHTTPRequestHandler):
             return
 
         try:
+            self._require_model_pull_pin(str(payload.get("pin", "")))
             events = stream_pull_chat_model(model_name)
+        except PermissionError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.FORBIDDEN)
+            return
         except OllamaError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return

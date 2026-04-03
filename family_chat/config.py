@@ -28,6 +28,11 @@ OLLAMA_URL = os.getenv("FAMILY_CHAT_OLLAMA_URL", "http://127.0.0.1:11434").rstri
 SERVER_HOST = os.getenv("FAMILY_CHAT_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("FAMILY_CHAT_PORT", "8080"))
 ADMIN_PIN = os.getenv("FAMILY_CHAT_ADMIN_PIN", "")
+MODEL_PULL_REQUIRES_PIN = os.getenv("FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 MOCK_OLLAMA = os.getenv("FAMILY_CHAT_MOCK_OLLAMA", "").lower() in {"1", "true", "yes"}
 MEMORY_DB_PATH = Path(
     os.getenv("FAMILY_CHAT_DB_PATH", str(APP_ROOT / "data" / "family_chat_memory.sqlite3"))
@@ -149,6 +154,7 @@ def public_settings() -> dict:
         "guard_model": GUARD_MODEL,
         "memory_backend": "langgraph-sqlite-encrypted",
         "memory_encrypted": True,
+        "model_pull_requires_pin": MODEL_PULL_REQUIRES_PIN and bool(ADMIN_PIN),
         "profiles": {
             name: {
                 "name": profile.name,

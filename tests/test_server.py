@@ -94,7 +94,7 @@ class ServerTests(unittest.TestCase):
             "chat_models": [{"name": "llama3.2:3b", "installed": True}],
         }
 
-        with patch.object(
+        with patch.object(server_module, "MODEL_PULL_REQUIRES_PIN", False), patch.object(
             server_module,
             "stream_pull_chat_model",
             return_value=iter(
@@ -116,6 +116,33 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(lines[1]["status"], "downloading")
         self.assertEqual(lines[-1]["type"], "complete")
         self.assertEqual(lines[-1]["selector_state"]["chat_models"][0]["name"], "llama3.2:3b")
+
+    def test_delete_model_endpoint_returns_refreshed_selector_state(self) -> None:
+        handler, captured = self._build_handler({"model_name": "llama3.2:3b"})
+        selector_state = {
+            "default_chat_model": "llama3.2:1b",
+            "ollama_available": True,
+            "ollama_error": "",
+            "chat_models": [{"name": "llama3.2:3b", "installed": False}],
+        }
+
+        with patch.object(server_module, "delete_chat_model", return_value=selector_state):
+            handler._handle_delete_model()
+
+        self.assertEqual(captured["status"], HTTPStatus.OK)
+        self.assertEqual(captured["payload"]["message"], "Model 'llama3.2:3b' was deleted.")
+        self.assertFalse(captured["payload"]["chat_models"][0]["installed"])
+
+    def test_pull_model_progress_requires_pin_when_configured(self) -> None:
+        handler, captured = self._build_handler({"model_name": "llama3.2:3b", "pin": ""})
+
+        with patch.object(server_module, "MODEL_PULL_REQUIRES_PIN", True), patch.object(
+            server_module, "ADMIN_PIN", "4821"
+        ):
+            handler._handle_pull_model_progress()
+
+        self.assertEqual(captured["status"], HTTPStatus.FORBIDDEN)
+        self.assertEqual(captured["payload"]["error"], "Pulling models requires the correct adult PIN.")
 
 
 if __name__ == "__main__":

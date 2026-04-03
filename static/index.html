@@ -209,6 +209,12 @@
         border: 1px solid rgba(46, 111, 87, 0.28);
       }
 
+      .danger-button {
+        background: #fff;
+        color: var(--danger);
+        border: 1px solid rgba(159, 49, 32, 0.28);
+      }
+
       .status {
         color: var(--muted);
         font-size: 0.92rem;
@@ -318,6 +324,9 @@
               <button class="secondary-button" id="pullModelButton" type="button" style="display: none; margin-top: 8px;">
                 Pull model
               </button>
+              <button class="danger-button" id="deleteModelButton" type="button" style="display: none; margin-top: 8px;">
+                Delete model
+              </button>
               <p class="small" id="pullProgressText" style="display: none; margin-top: 8px;"></p>
               <p class="small" id="modelHelp" style="margin-top: 8px;"></p>
             </div>
@@ -366,6 +375,7 @@
         ollamaAvailable: false,
         deviceMember: null,
         lastLoadedProfile: "child-12",
+        modelPullRequiresPin: false,
         busy: false,
       };
 
@@ -384,6 +394,7 @@
       const modelsText = document.getElementById("models");
       const chatModelInput = document.getElementById("chatModel");
       const pullModelButton = document.getElementById("pullModelButton");
+      const deleteModelButton = document.getElementById("deleteModelButton");
       const pullProgressText = document.getElementById("pullProgressText");
       const modelHelp = document.getElementById("modelHelp");
 
@@ -402,6 +413,7 @@
         pinInput.disabled = state.busy;
         chatModelInput.disabled = state.busy || !chatModelInput.options.length;
         pullModelButton.disabled = state.busy;
+        deleteModelButton.disabled = state.busy;
         messageInput.disabled = state.busy;
       }
 
@@ -653,6 +665,7 @@
         if (!model) {
           modelHelp.textContent = "";
           pullModelButton.style.display = "none";
+          deleteModelButton.style.display = "none";
           setPullProgress("");
           return;
         }
@@ -660,11 +673,17 @@
         let text = describeModel(model);
         if (!model.installed) {
           text += " | You can install it here now.";
+          if (state.modelPullRequiresPin) {
+            text += " | Pulling this model requires the adult PIN.";
+          }
         }
         modelHelp.textContent = text;
         pullModelButton.style.display =
           !state.ollamaAvailable || model.installed ? "none" : "block";
+        deleteModelButton.style.display =
+          !state.ollamaAvailable || !model.installed ? "none" : "block";
         pullModelButton.textContent = `Pull ${model.name}`;
+        deleteModelButton.textContent = `Delete ${model.name}`;
       }
 
       function applyModelState(data, preferredSelection = "") {
@@ -741,6 +760,7 @@
         }
 
         state.deviceMember = data.device_member || { id: "device", label: "This device" };
+        state.modelPullRequiresPin = Boolean(data.model_pull_requires_pin);
         deviceMemberText.textContent = `This device: ${state.deviceMember.label}`;
         renderProfileOptions(data.profiles || {});
         applyModelState(data);
@@ -861,6 +881,7 @@
             },
             body: JSON.stringify({
               model_name: model.name,
+              pin: pinInput.value,
             }),
           });
 
@@ -868,6 +889,47 @@
           applyModelState(data.selector_state, model.name);
           setPullProgress(data.message || `Installed ${model.name}`);
           setBusy(false, data.message || `Installed ${model.name}`);
+        } catch (error) {
+          errorText.textContent = error.message;
+          setPullProgress(error.message, "error");
+          setBusy(false, "Ready");
+        }
+      }
+
+      async function deleteSelectedModel() {
+        const model = selectedModel();
+        if (!model || !model.installed) {
+          return;
+        }
+
+        const confirmed = window.confirm(`Delete ${model.name} from local Ollama storage?`);
+        if (!confirmed) {
+          return;
+        }
+
+        errorText.textContent = "";
+        setPullProgress(`Deleting ${model.name}...`);
+        setBusy(true, "Deleting model...");
+
+        try {
+          const response = await fetch("/api/delete-model", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model_name: model.name,
+            }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Unable to delete the selected model.");
+          }
+
+          applyModelState(data, model.name);
+          setPullProgress(data.message || `Deleted ${model.name}`);
+          setBusy(false, data.message || `Deleted ${model.name}`);
         } catch (error) {
           errorText.textContent = error.message;
           setPullProgress(error.message, "error");
@@ -898,6 +960,7 @@
         renderSelectedModelHelp();
       });
       pullModelButton.addEventListener("click", pullSelectedModel);
+      deleteModelButton.addEventListener("click", deleteSelectedModel);
       messageInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();

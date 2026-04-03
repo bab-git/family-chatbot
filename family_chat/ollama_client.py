@@ -111,6 +111,33 @@ def _get_json(path: str) -> dict:
         raise OllamaError("Ollama returned invalid JSON.") from exc
 
 
+def _delete_json(path: str, payload: dict, *, timeout: int = 120) -> dict:
+    request = urllib.request.Request(
+        f"{OLLAMA_URL}{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="DELETE",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise OllamaError(f"Ollama HTTP {exc.code}: {error_body}") from exc
+    except urllib.error.URLError as exc:
+        raise OllamaError(
+            f"Unable to reach Ollama at {OLLAMA_URL}. Start Ollama and pull the configured models."
+        ) from exc
+
+    if not body.strip():
+        return {}
+
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise OllamaError("Ollama returned invalid JSON.") from exc
+
+
 def _is_llama_chat_model(name: str, details: dict | None = None) -> bool:
     lowered = (name or "").lower()
     if lowered.startswith("llama-guard") or "guard" in lowered:
@@ -266,6 +293,21 @@ def pull_chat_model(model_name: str) -> dict:
     status = str(data.get("status", "")).strip().lower()
     if status and status != "success":
         raise OllamaError(f"Ollama pull did not complete successfully: {data.get('status')}")
+    return model_selector_state()
+
+
+def delete_chat_model(model_name: str) -> dict:
+    selected = (model_name or "").strip()
+    if not selected:
+        raise OllamaError("Model name is required.")
+
+    if not _is_llama_chat_model(selected):
+        raise OllamaError("Only Ollama Llama chat models can be deleted from this selector.")
+
+    if MOCK_OLLAMA:
+        raise OllamaError("Mock mode is enabled. Disable it before deleting models.")
+
+    _delete_json("/api/delete", {"model": selected}, timeout=120)
     return model_selector_state()
 
 
