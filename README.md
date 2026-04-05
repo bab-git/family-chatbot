@@ -17,8 +17,8 @@ It combines a lightweight browser UI, local Ollama models, profile-based prompt 
 ## Table of Contents
 
 - [What exists today](#what-exists-today)
-- [5-minute quickstart](#5-minute-quickstart)
-- [Windows quick use](#windows-quick-use)
+- [Windows installation](#windows-installation)
+- [macOS / Linux installation](#macos--linux-installation)
 - [Defaults](#defaults)
 - [Architecture](#architecture)
 - [Local config notes](#local-config-notes)
@@ -38,74 +38,25 @@ It combines a lightweight browser UI, local Ollama models, profile-based prompt 
 - separate persisted threads for each device profile and conversation
 - a chat model selector across Llama-family options with rough local memory guidance
 
-## 5-minute quickstart
+## Windows installation
 
-### 1. Install prerequisites
+### 1. Install prerequisites in PowerShell
 
-- `uv`
-- Ollama
+Install `uv`:
 
-### 2. Install the project and create local config
-
-```bash
-uv sync
-cp .env.example .env
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Then edit `.env` and set a real local key:
+Install Ollama:
 
-```bash
-LANGGRAPH_AES_KEY=0123456789abcdef0123456789abcdef
+```powershell
+irm https://ollama.com/install.ps1 | iex
 ```
 
-### 3. Fastest way to try it: mock mode
+### 2. Clone the repo and run setup
 
-If you want to see the UI and safety flow without pulling models first:
-
-```bash
-export FAMILY_CHAT_MOCK_OLLAMA=1
-.venv/bin/python -m family_chat.server
-```
-
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080).
-
-### 4. Full local model setup
-
-Start Ollama in one terminal:
-
-```bash
-ollama serve
-```
-
-Pull the default models in another terminal:
-
-```bash
-ollama pull llama3.2:1b
-ollama pull llama-guard3:1b
-```
-
-Then run the app:
-
-```bash
-.venv/bin/python -m family_chat.server
-```
-
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080).
-
-### 5. Run tests
-
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-## Windows quick use
-
-If you clone this repo onto a Windows PC and want a child-friendly daily flow, use the included launchers:
-
-1. Install `uv` and Ollama for Windows.
-2. Clone the repo.
-3. Double-click [Setup Family Chat.cmd](./Setup%20Family%20Chat.cmd) once.
-4. After setup, the child can just double-click [Open Family Chat.cmd](./Open%20Family%20Chat.cmd).
+After cloning the repo, run [Setup Family Chat.cmd](./Setup%20Family%20Chat.cmd) once.
 
 Use the `.cmd` launchers rather than running the `.ps1` files directly. The `.cmd` wrappers already call PowerShell with `-ExecutionPolicy Bypass`, which avoids the default Windows script-policy prompt for this local launcher flow.
 
@@ -117,6 +68,20 @@ What the setup script does:
 - starts Ollama if it is not already running
 - pulls the configured chat and guard models from `.env`
 
+### 3. Review the default adult PIN
+
+The sample `.env.example` sets:
+
+```env
+FAMILY_CHAT_ADMIN_PIN=4251
+```
+
+That means the `adult` profile is enabled by default after setup. If you want a different PIN, edit [`.env`](./.env) after running setup and change `FAMILY_CHAT_ADMIN_PIN`. If you want model pulls to require the same PIN, also set `FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN=1`.
+
+### 4. Open the app
+
+After setup, open [Open Family Chat.cmd](./Open%20Family%20Chat.cmd).
+
 What the open script does:
 
 - starts Ollama in the background if needed
@@ -127,11 +92,86 @@ If you want it to start automatically after Windows login, run [Enable Family Ch
 
 The Windows scripts live in [scripts/windows](./scripts/windows).
 
+## macOS / Linux installation
+
+### 1. Install prerequisites
+
+- `make` if your system does not already include it
+
+Install `uv` on macOS or Linux:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Install Ollama on macOS or Linux:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+### 2. Run setup
+
+```bash
+make setup
+```
+
+That creates `.env` from `.env.example` if needed, runs `uv sync`, and generates a local `LANGGRAPH_AES_KEY` when the sample placeholder is still present.
+
+### 3. Review the default adult PIN
+
+The sample `.env.example` sets:
+
+```env
+FAMILY_CHAT_ADMIN_PIN=4251
+```
+
+Change that in [`.env`](./.env) if you want a different adult PIN, or clear it if you want the `adult` profile disabled.
+
+### 4. Fastest way to try it: mock mode
+
+If you want to see the UI and safety flow without pulling models first:
+
+```bash
+make mock
+```
+
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080).
+
+### 5. Full local model setup
+
+Start Ollama in one terminal:
+
+```bash
+ollama serve
+```
+
+Pull the configured models:
+
+```bash
+make models
+```
+
+Then run the app:
+
+```bash
+make run
+```
+
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080).
+
+### 6. Run tests
+
+```bash
+make test
+```
+
 ## Defaults
 
 - The server binds to `127.0.0.1` by default.
 - The sample env keeps the setup local and leaves LAN exposure as an explicit opt-in.
-- The `adult` profile stays disabled until `FAMILY_CHAT_ADMIN_PIN` is set.
+- The sample env sets `FAMILY_CHAT_ADMIN_PIN=4251`, which enables the `adult` profile by default.
+- Change the PIN in your local [`.env`](./.env), or clear it there if you want the `adult` profile disabled.
 - Model-pull PIN protection only turns on when both `FAMILY_CHAT_ADMIN_PIN` and `FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN=1` are set.
 
 ## Architecture
@@ -154,7 +194,8 @@ The sample `.env.example` covers the main local knobs:
 
 - `LANGGRAPH_AES_KEY` must be exactly 16, 24, or 32 bytes long
 - `FAMILY_CHAT_DEVICE_MEMBER` fixes the identity for this install
-- `FAMILY_CHAT_ADMIN_PIN` enables the `adult` profile
+- `FAMILY_CHAT_ADMIN_PIN=4251` enables the `adult` profile by default in the sample config
+- change `FAMILY_CHAT_ADMIN_PIN` in your local [`.env`](./.env) to use a different PIN
 - `FAMILY_CHAT_MODEL_PULL_REQUIRES_PIN=1` makes model pulls use that same adult PIN
 
 Privacy note:

@@ -15,18 +15,23 @@ The project goal is to explore safer local-first family chat patterns without ov
 ## Local setup
 
 ```bash
-uv sync
-cp .env.example .env
+make setup
 ```
 
-Set a local `LANGGRAPH_AES_KEY` in `.env`, then run either:
+The sample `.env.example` enables the `adult` profile with `FAMILY_CHAT_ADMIN_PIN=4251`. Change that in `.env` if you want a different PIN, or clear it if you want the adult profile disabled.
+
+For a quick UI-only check without Ollama:
 
 ```bash
-export FAMILY_CHAT_MOCK_OLLAMA=1
-.venv/bin/python -m family_chat.server
+make mock
 ```
 
-or the full Ollama-backed flow after pulling the default models.
+For the full Ollama-backed flow, start Ollama and then run:
+
+```bash
+make models
+make run
+```
 
 ## Before opening a PR
 
@@ -36,7 +41,7 @@ or the full Ollama-backed flow after pulling the default models.
 - run:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+make test
 ```
 
 ## Pull request guidance
