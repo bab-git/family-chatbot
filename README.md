@@ -107,6 +107,8 @@ If you clone this repo onto a Windows PC and want a child-friendly daily flow, u
 3. Double-click [Setup Family Chat.cmd](./Setup%20Family%20Chat.cmd) once.
 4. After setup, the child can just double-click [Open Family Chat.cmd](./Open%20Family%20Chat.cmd).
 
+Use the `.cmd` launchers rather than running the `.ps1` files directly. The `.cmd` wrappers already call PowerShell with `-ExecutionPolicy Bypass`, which avoids the default Windows script-policy prompt for this local launcher flow.
+
 What the setup script does:
 
 - creates `.env` from `.env.example` if needed

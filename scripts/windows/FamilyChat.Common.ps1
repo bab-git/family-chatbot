@@ -97,14 +97,14 @@ function Get-FamilyChatRuntimeConfig {
     )
 
     $envPath = Join-Path $RepoRoot ".env"
-    $host = Get-FamilyChatEnvValue -EnvPath $envPath -Key "FAMILY_CHAT_HOST" -Default "127.0.0.1"
+    $serverHost = Get-FamilyChatEnvValue -EnvPath $envPath -Key "FAMILY_CHAT_HOST" -Default "127.0.0.1"
     $port = Get-FamilyChatEnvValue -EnvPath $envPath -Key "FAMILY_CHAT_PORT" -Default "8080"
-    $browserHost = if ($host -in @("0.0.0.0", "::")) { "127.0.0.1" } else { $host }
+    $browserHost = if ($serverHost -in @("0.0.0.0", "::")) { "127.0.0.1" } else { $serverHost }
 
     return [pscustomobject]@{
         RepoRoot    = $RepoRoot
         EnvPath     = $envPath
-        Host        = $host
+        Host        = $serverHost
         Port        = $port
         BrowserHost = $browserHost
         AppUrl      = "http://$browserHost`:$port"
