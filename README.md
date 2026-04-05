@@ -14,6 +14,20 @@ It combines a lightweight browser UI, local Ollama models, profile-based prompt 
 
 ![Family Chat experiment UI](assets/family-chat-experiment.png)
 
+## Table of Contents
+
+- [What exists today](#what-exists-today)
+- [5-minute quickstart](#5-minute-quickstart)
+- [Windows quick use](#windows-quick-use)
+- [Defaults](#defaults)
+- [Architecture](#architecture)
+- [Local config notes](#local-config-notes)
+- [Known limits / what's missing](#known-limits--whats-missing)
+- [Good first contributions](#good-first-contributions)
+- [Contributing](#contributing)
+- [License](#license)
+- [Windows note](#windows-note)
+
 ## What exists today
 
 - local web UI served by a small Python server
@@ -83,6 +97,33 @@ Open [http://127.0.0.1:8080](http://127.0.0.1:8080).
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
+
+## Windows quick use
+
+If you clone this repo onto a Windows PC and want a child-friendly daily flow, use the included launchers:
+
+1. Install `uv` and Ollama for Windows.
+2. Clone the repo.
+3. Double-click [Setup Family Chat.cmd](./Setup%20Family%20Chat.cmd) once.
+4. After setup, the child can just double-click [Open Family Chat.cmd](./Open%20Family%20Chat.cmd).
+
+What the setup script does:
+
+- creates `.env` from `.env.example` if needed
+- generates a local `LANGGRAPH_AES_KEY` if the env file still has a placeholder
+- runs `uv sync`
+- starts Ollama if it is not already running
+- pulls the configured chat and guard models from `.env`
+
+What the open script does:
+
+- starts Ollama in the background if needed
+- starts the Family Chat Python server in the background if needed
+- opens the browser to the local app
+
+If you want it to start automatically after Windows login, run [Enable Family Chat Auto Start.cmd](./Enable%20Family%20Chat%20Auto%20Start.cmd) once. That installs a per-user Startup launcher so nobody needs to manually run `ollama serve` or `python -m family_chat.server`.
+
+The Windows scripts live in [scripts/windows](./scripts/windows).
 
 ## Defaults
 
