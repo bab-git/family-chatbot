@@ -11,6 +11,23 @@ This project is still experimental, so the changelog is intentionally lightweigh
 - README keyword tags for better repo scanning
 - this changelog for public project history
 
+## [0.1.1] - 2026-04-06
+
+### Added
+
+- Windows launcher scripts for one-time setup, one-click app start, and optional startup-folder auto launch
+- clearer Windows quick-use flow so a child can run the app without manually starting Ollama or the Python server
+
+### Changed
+
+- refreshed setup guidance across Windows and Linux/macOS around `uv sync`, local `.env` creation, and everyday app startup
+- aligned the repo documentation with the simpler local-device deployment model and child-focused startup flow
+
+### Fixed
+
+- avoided the PowerShell `$Host` variable collision in the Windows runtime helper scripts
+- suppressed the Windows PowerShell `Invoke-WebRequest` script-parsing confirmation prompt in the launcher health checks
+
 ## [0.1.0] - 2026-04-04
 
 ### Added
