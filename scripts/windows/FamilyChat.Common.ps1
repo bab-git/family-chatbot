@@ -138,7 +138,7 @@ function Test-FamilyChatHttpEndpoint {
     )
 
     try {
-        $null = Invoke-WebRequest -Uri $Url -TimeoutSec $TimeoutSec
+        $null = Invoke-WebRequest -Uri $Url -TimeoutSec $TimeoutSec -UseBasicParsing
         return $true
     } catch {
         return $false
